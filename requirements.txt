@@ -9,3 +9,4 @@ httpx
 pyproj
 shapely
 python-dotenv
+aiosmtplib==5.1.3
