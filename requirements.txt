@@ -10,3 +10,4 @@ pyproj
 shapely
 python-dotenv
 aiosmtplib==5.1.3
+email-validator==2.3.0
