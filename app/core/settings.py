@@ -15,10 +15,10 @@ class Settings(BaseSettings):
     EMAIL_PASSWORD: str
     EMAIL_FROM: str = "lahadlihad1473@gmail.com"
 
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        extra="ignore"
-    )
+    # model_config = SettingsConfigDict(
+    #     env_file=".env",
+    #     extra="ignore"
+    # )
 
 
 settings = Settings()
