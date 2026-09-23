@@ -19,13 +19,17 @@ router = APIRouter(
 )
 
 
-# Every demolition notice is one row in demolition_staging
-# (notice_id is its primary key). Only these fields are exposed.
+# One row per estimated building in material_estimation_final: the 1081
+# demolition notices plus Jan Provostlaan 16, which has a pand_id but no
+# notice. Only these fields are exposed.
 NOTICE_COLUMNS = """
     notice_id,
+    pand_id,
     title,
     publication_date
 """
+
+TABLE = "material_estimation_final"
 
 # Searchable, even though only the columns above are returned
 SEARCH_COLUMNS = [
@@ -35,6 +39,7 @@ SEARCH_COLUMNS = [
     "address",
     "postal_code",
     "notice_id",
+    "pand_id",
 ]
 
 RANK = city_rank_sql("city", "municipality")
@@ -63,7 +68,7 @@ def get_notices(
             SELECT
                 COUNT(*) AS total,
                 COUNT(*) FILTER (WHERE {RANK} < 2) AS city_matches
-            FROM demolition_staging
+            FROM {TABLE}
             WHERE {MATCHES}
         """),
         params,
@@ -72,7 +77,7 @@ def get_notices(
     rows = db.execute(
         text(f"""
             SELECT {NOTICE_COLUMNS}
-            FROM demolition_staging
+            FROM {TABLE}
             WHERE {MATCHES}
             ORDER BY
                 {RANK},
@@ -113,7 +118,7 @@ def get_notice(
     row = db.execute(
         text(f"""
             SELECT {NOTICE_COLUMNS}
-            FROM demolition_staging
+            FROM {TABLE}
             WHERE notice_id = :notice_id
         """),
         {"notice_id": notice_id},
