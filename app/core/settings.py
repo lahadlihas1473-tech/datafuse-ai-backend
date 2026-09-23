@@ -1,4 +1,15 @@
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+# Project root:
+# C:\datafuse-ai
+BASE_DIR = Path(__file__).resolve().parents[2]
+
+# Explicitly use:
+# C:\datafuse-ai\.env
+ENV_FILE = BASE_DIR / ".env"
 
 
 class Settings(BaseSettings):
@@ -16,7 +27,8 @@ class Settings(BaseSettings):
     EMAIL_FROM: str = "lahadlihad1473@gmail.com"
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=ENV_FILE,
+        env_file_encoding="utf-8",
         extra="ignore"
     )
 

@@ -11,7 +11,10 @@ router = APIRouter(
 )
 
 
-# Response key -> (Dutch name, English name), in display order
+# ============================================================
+# MATERIAL LABELS
+# ============================================================
+
 MATERIAL_LABELS = {
     "steel": ("Staal", "Steel"),
     "copper": ("Koper", "Copper"),
@@ -33,9 +36,54 @@ MATERIAL_LABELS = {
 }
 
 
+# ============================================================
+# HELPER FUNCTION
+# ============================================================
+
+def material_values(result, prefix):
+    """
+    Convert a material's tonnes and CO2 values into
+    tonnes and kilograms.
+
+    Example:
+        prefix = "koper"
+
+    Reads:
+        koper_tonnes
+        koper_co2_tonnes
+
+    Returns:
+        tonnes
+        kg
+        co2_tonnes
+        co2_kg
+    """
+
+    tonnes = result[f"{prefix}_tonnes"]
+    co2_tonnes = result[f"{prefix}_co2_tonnes"]
+
+    return {
+        "tonnes": tonnes,
+        "kg": tonnes * 1000,
+        "co2_tonnes": co2_tonnes,
+        "co2_kg": co2_tonnes * 1000
+    }
+
+
+# ============================================================
+# SEARCH MATERIAL ESTIMATION BY ADDRESS
+# ============================================================
+
 @router.get("/search")
 def search_material_estimation(
-    address: str = Query(..., min_length=2),
+    address: str = Query(
+        ...,
+        min_length=2,
+        description=(
+            "Search building material estimation by address. "
+            "Example: Jan Provostlaan 16, Bilthoven"
+        ),
+    ),
     db: Session = Depends(get_db)
 ):
     search = address.strip()
@@ -47,6 +95,7 @@ def search_material_estimation(
             postal_code,
             city,
 
+            -- Main materials
             staal_tonnes,
             staal_co2_tonnes,
 
@@ -65,8 +114,10 @@ def search_material_estimation(
             overig_tonnes,
             overig_co2_tonnes,
 
+            -- Building identifier
             pand_id,
 
+            -- Additional materials
             koper_tonnes,
             koper_co2_tonnes,
 
@@ -88,24 +139,62 @@ def search_material_estimation(
             isolatie_tonnes,
             isolatie_co2_tonnes,
 
+            -- Totals
             total_material_mass_tonnes,
             total_co2_tonnes
 
-        FROM material_estimation_final
+        FROM public.material_estimation_final
 
         WHERE
-            address ILIKE :search
-            OR CONCAT(address, ' ', house_number) ILIKE :search
-            OR CONCAT(address, ' ', house_number, ', ', city) ILIKE :search
+            LOWER(TRIM(address)) ILIKE LOWER(:search)
+
+            OR LOWER(
+                TRIM(
+                    CONCAT(
+                        address,
+                        ', ',
+                        city
+                    )
+                )
+            ) ILIKE LOWER(:search)
+
+            OR LOWER(
+                TRIM(
+                    CONCAT(
+                        address,
+                        ' ',
+                        city
+                    )
+                )
+            ) ILIKE LOWER(:search)
+
+            OR LOWER(
+                TRIM(
+                    CONCAT(
+                        address,
+                        ', ',
+                        postal_code,
+                        ' ',
+                        city
+                    )
+                )
+            ) ILIKE LOWER(:search)
 
         ORDER BY id
+
         LIMIT 1
     """)
 
     result = db.execute(
         query,
-        {"search": f"%{search}%"}
+        {
+            "search": f"%{search}%"
+        }
     ).mappings().first()
+
+    # ========================================================
+    # NOT FOUND
+    # ========================================================
 
     if not result:
         raise HTTPException(
@@ -113,13 +202,26 @@ def search_material_estimation(
             detail="No material estimation found for this address"
         )
 
+    # ========================================================
+    # MATERIAL CALCULATIONS
+    # ========================================================
+
     materials = {
+
+        # ----------------------------------------------------
+        # Steel
+        # ----------------------------------------------------
+
         "steel": {
             "tonnes": result["staal_tonnes"],
             "kg": result["staal_tonnes"] * 1000,
             "co2_tonnes": result["staal_co2_tonnes"],
             "co2_kg": result["staal_co2_tonnes"] * 1000
         },
+
+        # ----------------------------------------------------
+        # Wood
+        # ----------------------------------------------------
 
         "wood": {
             "tonnes": result["hout_tonnes"],
@@ -128,12 +230,20 @@ def search_material_estimation(
             "co2_kg": result["hout_co2_tonnes"] * 1000
         },
 
+        # ----------------------------------------------------
+        # Concrete
+        # ----------------------------------------------------
+
         "concrete": {
             "tonnes": result["beton_tonnes"],
             "kg": result["beton_tonnes"] * 1000,
             "co2_tonnes": result["beton_co2_tonnes"],
             "co2_kg": result["beton_co2_tonnes"] * 1000
         },
+
+        # ----------------------------------------------------
+        # Brick
+        # ----------------------------------------------------
 
         "brick": {
             "tonnes": result["baksteen_tonnes"],
@@ -142,12 +252,20 @@ def search_material_estimation(
             "co2_kg": result["baksteen_co2_tonnes"] * 1000
         },
 
+        # ----------------------------------------------------
+        # Glass
+        # ----------------------------------------------------
+
         "glass": {
             "tonnes": result["glas_tonnes"],
             "kg": result["glas_tonnes"] * 1000,
             "co2_tonnes": result["glas_co2_tonnes"],
             "co2_kg": result["glas_co2_tonnes"] * 1000
         },
+
+        # ----------------------------------------------------
+        # Other
+        # ----------------------------------------------------
 
         "other": {
             "tonnes": result["overig_tonnes"],
@@ -156,15 +274,48 @@ def search_material_estimation(
             "co2_kg": result["overig_co2_tonnes"] * 1000
         },
 
-        "copper": material_values(result, "koper"),
-        "aluminium": material_values(result, "aluminium"),
-        "other_metal": material_values(result, "overig_metaal"),
-        "other_construction_minerals": material_values(
-            result, "overige_constructie_mineralen"
+        # ----------------------------------------------------
+        # Additional materials
+        # ----------------------------------------------------
+
+        "copper": material_values(
+            result,
+            "koper"
         ),
-        "ceramics": material_values(result, "keramiek"),
-        "plastic": material_values(result, "plastic"),
-        "insulation": material_values(result, "isolatie"),
+
+        "aluminium": material_values(
+            result,
+            "aluminium"
+        ),
+
+        "other_metal": material_values(
+            result,
+            "overig_metaal"
+        ),
+
+        "other_construction_minerals": material_values(
+            result,
+            "overige_constructie_mineralen"
+        ),
+
+        "ceramics": material_values(
+            result,
+            "keramiek"
+        ),
+
+        "plastic": material_values(
+            result,
+            "plastic"
+        ),
+
+        "insulation": material_values(
+            result,
+            "isolatie"
+        ),
+
+        # ----------------------------------------------------
+        # Total
+        # ----------------------------------------------------
 
         "total": {
             "tonnes": result["total_material_mass_tonnes"],
@@ -174,39 +325,40 @@ def search_material_estimation(
         }
     }
 
-    # Display labels only; keys and values stay unchanged
+    # ========================================================
+    # ADD LABELS
+    # ========================================================
+
     for key, (name_nl, name_en) in MATERIAL_LABELS.items():
+
         materials[key].update({
             "label": f"{name_nl} ({name_en})",
             "name_nl": name_nl,
             "name_en": name_en
         })
 
+    # ========================================================
+    # FULL ADDRESS
+    # ========================================================
+
+    full_address = (
+        f"{result['address']}, "
+        f"{result['postal_code']} "
+        f"{result['city']}"
+    )
+
+    # ========================================================
+    # RESPONSE
+    # ========================================================
+
     return {
         "success": True,
+
         "data": {
-            "address": (
-                f"{result['address']} "
-                f"{result['house_number']}, "
-                f"{result['postal_code']} "
-                f"{result['city']}"
-            ).strip(),
+            "address": full_address,
 
             "materials": materials,
 
             "pand_id": result["pand_id"]
         }
-    }
-
-
-def material_values(result, column: str):
-    # Missing values stay None instead of failing the multiplication
-    tonnes = result[f"{column}_tonnes"]
-    co2_tonnes = result[f"{column}_co2_tonnes"]
-
-    return {
-        "tonnes": tonnes,
-        "kg": tonnes * 1000 if tonnes is not None else None,
-        "co2_tonnes": co2_tonnes,
-        "co2_kg": co2_tonnes * 1000 if co2_tonnes is not None else None
     }
