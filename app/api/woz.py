@@ -197,3 +197,22 @@ def method2_woz(row: dict) -> Optional[dict]:
     row["est_woz_value_eur"] = _convert(value, int)
 
     return woz if value is not None else None
+
+
+def method2_woz_by_pand_id(db: Session, pand_ids: list[str]) -> dict[str, dict]:
+    """pand_id -> Method 2 estimated_woz object, for the pand_ids in method_2."""
+    ids = [pand_id for pand_id in pand_ids if pand_id]
+    if not ids:
+        return {}
+
+    rows = db.execute(
+        text("SELECT * FROM public.method_2 WHERE pand_id = ANY(:ids)"),
+        {"ids": ids},
+    ).mappings().all()
+
+    out = {}
+    for row in rows:
+        woz = method2_woz(dict(row))
+        if woz:
+            out[row["pand_id"]] = woz
+    return out

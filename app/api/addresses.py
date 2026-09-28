@@ -9,7 +9,7 @@ from app.api.search_utils import (
     contains_any_sql,
     search_params,
 )
-from app.api.woz import woz_by_pand_id
+from app.api.woz import method2_woz_by_pand_id
 from app.database.session import get_db
 from app.schemas.response import APIResponse
 
@@ -55,12 +55,13 @@ ADDRESS_FIELDS = "address, house_number, postal_code, city, pand_id"
 
 def with_woz(db: Session, rows) -> list[dict]:
     """
-    Add the Method 1 Estimated WOZ Value of each address's building,
-    matched on pand_id (every address has one pand_id): est_woz_value_eur
-    in whole euros, and estimated_woz with the calculation behind it.
+    Add the Method 2 Estimated WOZ Value of each address's building from
+    public.method_2, matched on pand_id (every address has one pand_id):
+    est_woz_value_eur in whole euros, and estimated_woz with the
+    calculation behind it.
     """
     items = [dict(row) for row in rows]
-    woz = woz_by_pand_id(db, [item["pand_id"] for item in items])
+    woz = method2_woz_by_pand_id(db, [item["pand_id"] for item in items])
 
     for item in items:
         details = woz.get(item["pand_id"])
