@@ -3,6 +3,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.api.woz import method2_woz
 from app.database.session import get_db
 from app.schemas.response import APIResponse
 
@@ -17,7 +18,8 @@ router = APIRouter(
 # (3DBAG measurements x construction build-up per building type and age).
 # Every column is returned, so the frontend has the full Method 2 record:
 # building information, geometry, 3DBAG attributes, facade, roof, height,
-# area, materials and CO2.
+# area, materials and CO2. Each item also carries estimated_woz: the
+# Method 2 Estimated WOZ Value with the calculation behind it.
 TABLE = "public.method_2"
 
 # An address is searched the way people write it: street alone, with a
@@ -43,6 +45,12 @@ ADDRESS_MATCH = """
 
     OR LOWER(TRIM(name)) ILIKE LOWER(:search)
 """
+
+
+def with_woz(item: dict) -> dict:
+    """Add estimated_woz (the est_woz_* columns, grouped)."""
+    item["estimated_woz"] = method2_woz(item)
+    return item
 
 
 # ============================================================
@@ -125,7 +133,7 @@ def search_method_2(
             "limit": limit,
             "offset": offset,
             "count": len(rows),
-            "items": [dict(row) for row in rows],
+            "items": [with_woz(dict(row)) for row in rows],
         },
         error=None,
     )

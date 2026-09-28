@@ -114,3 +114,86 @@ def estimated_woz(row) -> Optional[dict]:
     woz["disclaimer"] = DISCLAIMER
 
     return woz
+
+
+# ============================================================
+# METHOD 2 (public.method_2)
+# ============================================================
+
+# Values per unit of the building, from 3DBAG geometry and CBS buurt
+# figures (calculated by dataset/estimate_woz_method2.py). The endpoint
+# reads every column of method_2, so the row itself carries whichever
+# est_woz_* columns the database has.
+
+METHOD2_LABEL = "Estimated WOZ Value (Method 2)"
+
+METHOD2_FORMULA = {
+    "dwelling": "buurt avg WOZ x growth x (dwelling type ratio / buurt mix "
+                "ratio) x size factor x age factor",
+    "other": "floor area x gemeente EUR/m2 x location index x type factor "
+             "x size factor x age factor",
+}
+
+METHOD2_FIELDS = [
+    ("est_woz_value_eur", "value_eur", int),
+    ("est_woz_reference_year", "reference_year", int),
+    ("est_woz_gemeentecode", "gemeentecode", str),
+    ("est_woz_gemeentenaam", "gemeente", str),
+    ("est_woz_buurtcode", "buurtcode", str),
+    ("est_woz_buurtnaam", "buurt", str),
+    ("est_woz_location_level", "location_level", str),
+    ("est_woz_location_index", "location_index", float),
+    ("est_woz_cbs_area_avg_woz_eur", "cbs_area_avg_woz_eur", int),
+    ("est_woz_cbs_gemeente_avg_woz_eur", "cbs_gemeente_avg_woz_eur", int),
+    ("est_woz_dwelling_type", "dwelling_type", str),
+    ("est_woz_party_wall_share", "party_wall_share", float),
+    ("est_woz_floor_area_m2", "floor_area_m2", float),
+    ("est_woz_floor_area_source", "floor_area_source", str),
+    ("est_woz_units", "units", int),
+    ("est_woz_residential_value_eur", "residential_value_eur", int),
+    ("est_woz_other_value_eur", "other_value_eur", int),
+    ("est_woz_age_factor", "age_factor", float),
+    ("est_woz_age_band", "age_band", str),
+    ("est_woz_eur_per_m2", "eur_per_m2", float),
+    ("est_woz_imputed", "imputed", str),
+]
+
+# Measured inputs from BAG / 3DBAG, always in method_2
+METHOD2_INPUTS = [
+    ("bouwjaar", int),
+    ("go_m2", float),
+    ("bvo_m2", float),
+    ("perimeter_m", float),
+    ("party_wall_length_m", float),
+]
+
+
+def method2_woz(row: dict) -> Optional[dict]:
+    """
+    The estimated_woz object of a method_2 row (None without a value).
+    Removes the est_woz_* columns from the row, except est_woz_value_eur,
+    which is kept as whole euros.
+    """
+    value = row.get("est_woz_value_eur")
+    calculation = row.pop("est_woz_assumptions", None) or {}
+
+    woz = {"label": row.get("est_woz_label") or METHOD2_LABEL}
+    woz.update({
+        key: _convert(row.get(column), kind)
+        for column, key, kind in METHOD2_FIELDS
+    })
+    woz["inputs"] = {
+        column: _convert(row.get(column), kind)
+        for column, kind in METHOD2_INPUTS
+    }
+    woz["location_details"] = calculation.get("location")
+    woz["unit_values"] = calculation.get("units")
+    woz["formula"] = METHOD2_FORMULA
+    woz["disclaimer"] = DISCLAIMER
+
+    for column in [key for key in row if key.startswith("est_woz_")]:
+        if column != "est_woz_value_eur":
+            row.pop(column)
+    row["est_woz_value_eur"] = _convert(value, int)
+
+    return woz if value is not None else None
