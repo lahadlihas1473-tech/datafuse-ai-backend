@@ -29,6 +29,7 @@ UNIQUE_ADDRESSES = f"""
         MIN(TRIM(house_number)) AS house_number,
         MIN(UPPER(REPLACE(TRIM(postal_code), ' ', ''))) AS postal_code,
         MIN(TRIM(city)) AS city,
+        MIN(pand_id) AS pand_id,
         MIN({city_rank_sql("city", "municipality")}) AS match_rank
     FROM material_estimation_final
     WHERE {{where}}
@@ -48,7 +49,36 @@ SEARCH_COLUMNS = [
     "CONCAT(address, ' ', house_number)",
 ]
 
-ADDRESS_FIELDS = "address, house_number, postal_code, city"
+ADDRESS_FIELDS = "address, house_number, postal_code, city, pand_id"
+
+# Method 1 Estimated WOZ Value of the address's building, matched on
+# pand_id and returned in whole euros (every address has one pand_id).
+WOZ_FIELD = """
+    (
+        SELECT CAST(ROUND(MAX(woz.est_woz_value_eur)) AS BIGINT)
+        FROM material_estimation_final AS woz
+        WHERE woz.pand_id = unique_addresses.pand_id
+    ) AS est_woz_value_eur
+"""
+
+_woz_column_exists = False
+
+
+def woz_field(db: Session) -> str:
+    """WOZ_FIELD, or NULL while the database has no est_woz_value_eur."""
+    global _woz_column_exists
+
+    if not _woz_column_exists:
+        _woz_column_exists = db.execute(text("""
+            SELECT EXISTS (
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_name = 'material_estimation_final'
+                  AND column_name = 'est_woz_value_eur'
+            )
+        """)).scalar()
+
+    return WOZ_FIELD if _woz_column_exists else "NULL AS est_woz_value_eur"
 
 
 # ============================================================
@@ -81,7 +111,7 @@ def get_addresses(
 
     rows = db.execute(
         text(f"""
-            SELECT {ADDRESS_FIELDS}
+            SELECT {ADDRESS_FIELDS}, {woz_field(db)}
             FROM ({unique}) AS unique_addresses
             ORDER BY match_rank, city, address, house_number
             LIMIT :limit OFFSET :offset
@@ -129,7 +159,7 @@ def get_address(
 
     rows = db.execute(
         text(f"""
-            SELECT {ADDRESS_FIELDS}
+            SELECT {ADDRESS_FIELDS}, {woz_field(db)}
             FROM ({unique}) AS unique_addresses
             ORDER BY city, house_number
         """),
