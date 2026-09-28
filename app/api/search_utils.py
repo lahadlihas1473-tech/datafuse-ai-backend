@@ -34,6 +34,13 @@ def search_params(search: Optional[str]) -> dict:
     }
 
 
+# Parameters are cast to TEXT: with psycopg 3 the server binds them and
+# cannot infer a type for a bare ":term IS NULL".
+TERM = "CAST(:term AS TEXT)"
+PREFIX = "CAST(:prefix AS TEXT)"
+PATTERN = "CAST(:pattern AS TEXT)"
+
+
 def city_rank_sql(city: str, municipality: str) -> str:
     """
     SQL rank for a row: 0 = city is the search term, 1 = city/municipality
@@ -41,11 +48,11 @@ def city_rank_sql(city: str, municipality: str) -> str:
     """
     return f"""
         CASE
-            WHEN :term IS NULL THEN 2
-            WHEN LOWER(TRIM({city})) = LOWER(:term)
-              OR LOWER(TRIM({municipality})) = LOWER(:term) THEN 0
-            WHEN {city} ILIKE :prefix ESCAPE '\\'
-              OR {municipality} ILIKE :prefix ESCAPE '\\' THEN 1
+            WHEN {TERM} IS NULL THEN 2
+            WHEN LOWER(TRIM({city})) = LOWER({TERM})
+              OR LOWER(TRIM({municipality})) = LOWER({TERM}) THEN 0
+            WHEN {city} ILIKE {PREFIX} ESCAPE '\\'
+              OR {municipality} ILIKE {PREFIX} ESCAPE '\\' THEN 1
             ELSE 2
         END
     """
@@ -54,6 +61,6 @@ def city_rank_sql(city: str, municipality: str) -> str:
 def contains_any_sql(columns: list[str]) -> str:
     """WHERE clause: no search, or any column contains the term."""
     matches = " OR ".join(
-        f"{column} ILIKE :pattern ESCAPE '\\'" for column in columns
+        f"{column} ILIKE {PATTERN} ESCAPE '\\'" for column in columns
     )
-    return f"(:term IS NULL OR {matches})"
+    return f"({TERM} IS NULL OR {matches})"
