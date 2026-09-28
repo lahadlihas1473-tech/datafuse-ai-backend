@@ -9,6 +9,7 @@ from app.api.search_utils import (
     contains_any_sql,
     search_params,
 )
+from app.api.woz import woz_by_pand_id
 from app.database.session import get_db
 from app.schemas.response import APIResponse
 
@@ -51,34 +52,22 @@ SEARCH_COLUMNS = [
 
 ADDRESS_FIELDS = "address, house_number, postal_code, city, pand_id"
 
-# Method 1 Estimated WOZ Value of the address's building, matched on
-# pand_id and returned in whole euros (every address has one pand_id).
-WOZ_FIELD = """
-    (
-        SELECT CAST(ROUND(MAX(woz.est_woz_value_eur)) AS BIGINT)
-        FROM material_estimation_final AS woz
-        WHERE woz.pand_id = unique_addresses.pand_id
-    ) AS est_woz_value_eur
-"""
 
-_woz_column_exists = False
+def with_woz(db: Session, rows) -> list[dict]:
+    """
+    Add the Method 1 Estimated WOZ Value of each address's building,
+    matched on pand_id (every address has one pand_id): est_woz_value_eur
+    in whole euros, and estimated_woz with the calculation behind it.
+    """
+    items = [dict(row) for row in rows]
+    woz = woz_by_pand_id(db, [item["pand_id"] for item in items])
 
+    for item in items:
+        details = woz.get(item["pand_id"])
+        item["est_woz_value_eur"] = details["value_eur"] if details else None
+        item["estimated_woz"] = details
 
-def woz_field(db: Session) -> str:
-    """WOZ_FIELD, or NULL while the database has no est_woz_value_eur."""
-    global _woz_column_exists
-
-    if not _woz_column_exists:
-        _woz_column_exists = db.execute(text("""
-            SELECT EXISTS (
-                SELECT 1
-                FROM information_schema.columns
-                WHERE table_name = 'material_estimation_final'
-                  AND column_name = 'est_woz_value_eur'
-            )
-        """)).scalar()
-
-    return WOZ_FIELD if _woz_column_exists else "NULL AS est_woz_value_eur"
+    return items
 
 
 # ============================================================
@@ -111,7 +100,7 @@ def get_addresses(
 
     rows = db.execute(
         text(f"""
-            SELECT {ADDRESS_FIELDS}, {woz_field(db)}
+            SELECT {ADDRESS_FIELDS}
             FROM ({unique}) AS unique_addresses
             ORDER BY match_rank, city, address, house_number
             LIMIT :limit OFFSET :offset
@@ -130,7 +119,7 @@ def get_addresses(
             "city_matches": summary["city_matches"] if params["term"] else 0,
             "limit": limit,
             "offset": offset,
-            "items": [dict(row) for row in rows],
+            "items": with_woz(db, rows),
         },
         error=None,
     )
@@ -159,7 +148,7 @@ def get_address(
 
     rows = db.execute(
         text(f"""
-            SELECT {ADDRESS_FIELDS}, {woz_field(db)}
+            SELECT {ADDRESS_FIELDS}
             FROM ({unique}) AS unique_addresses
             ORDER BY city, house_number
         """),
@@ -184,6 +173,6 @@ def get_address(
         success=True,
         status=200,
         message="Address retrieved successfully",
-        data=[dict(row) for row in rows],
+        data=with_woz(db, rows),
         error=None,
     )

@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.api.woz import woz_by_pand_id
 from app.database.session import get_db
 
 
@@ -359,6 +360,13 @@ def search_material_estimation(
 
             "materials": materials,
 
-            "pand_id": result["pand_id"]
+            "pand_id": result["pand_id"],
+
+            # Method 1 Estimated WOZ Value with its calculation (None if
+            # the building has none)
+            "estimated_woz": woz_by_pand_id(
+                db,
+                [result["pand_id"]]
+            ).get(result["pand_id"])
         }
     }
